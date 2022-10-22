@@ -1,17 +1,17 @@
 const path = require('path');
 const express = require('express');
-const {validate, version} = require("uuid");
 const app = express();
 const server = require('http').createServer(app);
 const io = require('socket.io')(server);
+const {version, validate} = require('uuid');
 
+const ACTIONS = require('./src/socket/actions');
 const PORT = process.env.PORT || 3001;
-const ACTIONS = require('./socket/actions')
 
 function getClientRooms() {
     const {rooms} = io.sockets.adapter;
 
-    return Array.from(rooms.keys()).filter(roomID => validate(roomID) && version(roomID) === 4)
+    return Array.from(rooms.keys()).filter(roomID => validate(roomID) && version(roomID) === 4);
 }
 
 function shareRoomsInfo() {
@@ -22,14 +22,13 @@ function shareRoomsInfo() {
 
 io.on('connection', socket => {
     shareRoomsInfo();
-    console.log('Сокет подключен')
 
     socket.on(ACTIONS.JOIN, config => {
         const {room: roomID} = config;
         const {rooms: joinedRooms} = socket;
 
         if (Array.from(joinedRooms).includes(roomID)) {
-            return console.warn(`Пользователь подключен к комнате ${roomID}`);
+            return console.warn(`Already joined to ${roomID}`);
         }
 
         const clients = Array.from(io.sockets.adapter.rooms.get(roomID) || []);
@@ -48,12 +47,14 @@ io.on('connection', socket => {
 
         socket.join(roomID);
         shareRoomsInfo();
-    })
+    });
 
     function leaveRoom() {
         const {rooms} = socket;
 
         Array.from(rooms)
+            // LEAVE ONLY CLIENT CREATED ROOM
+            .filter(roomID => validate(roomID) && version(roomID) === 4)
             .forEach(roomID => {
 
                 const clients = Array.from(io.sockets.adapter.rooms.get(roomID) || []);
@@ -92,8 +93,16 @@ io.on('connection', socket => {
         });
     });
 
-})
+});
+
+const publicPath = path.join(__dirname, 'build');
+
+app.use(express.static(publicPath));
+
+app.get('*', (req, res) => {
+    res.sendFile(path.join(publicPath, 'index.html'));
+});
 
 server.listen(PORT, () => {
-    console.log('Сервер запущен!')
+    console.log('Server Started!')
 })
